@@ -27,7 +27,9 @@ Estado del proyecto
 
 En desarrollo.
 
-Autora
+Autores
 
-Ayelen Gisela Cutraro
+- Ayelen Gisela Cutraro
+Estudiante de Tecnicatura en Inteligencia Artificial en la UNAHUR.
+- Jorge Ariel Santillan
 Estudiante de Tecnicatura en Inteligencia Artificial en la UNAHUR.
