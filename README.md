@@ -14,6 +14,7 @@ Tecnologías
 - SQLite
 - SQL
 - Git y GitHub
+- Streamlit y Kivy
 
 Funcionalidades planificadas
 
