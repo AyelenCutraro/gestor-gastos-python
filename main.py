@@ -1,5 +1,42 @@
 import sqlite3
+import calendar
 from datetime import datetime, date
+
+# ==========================================
+# 0. CATÁLOGO DE TARJETAS (Argentina)
+# ==========================================
+# Pensado para reutilizarse en la futura app Kivy (Spinner, colores, logos).
+# Los colores son aproximados: ajustalos a gusto.
+# "logo" es la ruta donde guardarías la imagen dentro del proyecto.
+
+TARJETAS_ARGENTINA = {
+    "Visa":             {"color": "#1A1F71", "logo": "assets/logos/visa.png"},
+    "Mastercard":       {"color": "#EB001B", "logo": "assets/logos/mastercard.png"},
+    "American Express": {"color": "#006FCF", "logo": "assets/logos/amex.png"},
+    "Naranja X":        {"color": "#FF6600", "logo": "assets/logos/naranja.png"},
+    "Mercado Pago":     {"color": "#00B1EA", "logo": "assets/logos/mercadopago.png"},
+    "Cabal":            {"color": "#005DAA", "logo": "assets/logos/cabal.png"},
+    "Ualá":             {"color": "#3D5AFE", "logo": "assets/logos/uala.png"},
+    "Brubank":          {"color": "#6B2FD1", "logo": "assets/logos/brubank.png"},
+    "Tarjeta Nevada":   {"color": "#E30613", "logo": "assets/logos/nevada.png"},
+    "Carrefour":        {"color": "#004E9F", "logo": "assets/logos/carrefour.png"},
+    "Cencosud":         {"color": "#E4002B", "logo": "assets/logos/cencosud.png"},
+}
+
+ESTILO_POR_DEFECTO = {"color": "#607D8B", "logo": "assets/logos/generica.png"}
+
+
+def obtener_estilo_tarjeta(nombre):
+    """
+    Devuelve {'color':..., 'logo':...} para una tarjeta guardada.
+    Como el nombre puede incluir el banco (ej: 'Visa Santander'),
+    busca por prefijo. Si no encuentra, devuelve un estilo genérico.
+    """
+    for base, estilo in TARJETAS_ARGENTINA.items():
+        if nombre.lower().startswith(base.lower()):
+            return estilo
+    return ESTILO_POR_DEFECTO
+
 
 # ==========================================
 # 1. CONEXIÓN Y BASE DE DATOS
@@ -48,6 +85,22 @@ def crear_tablas():
             fecha_compra TEXT NOT NULL,
             fecha_ultimo_pago TEXT DEFAULT NULL,
             FOREIGN KEY (tarjeta_id) REFERENCES tarjetas(id)
+        )
+    """)
+
+    # Tabla de servicios (luz, gas, internet, etc.)
+    # fecha_vencimiento se guarda como AAAA-MM-DD
+    # dias_aviso: cuántos días antes del vencimiento empieza a avisar
+    # recurrente = 1: al pagarlo, el vencimiento pasa al mes siguiente
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS servicios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            monto REAL DEFAULT 0,
+            fecha_vencimiento TEXT NOT NULL,
+            dias_aviso INTEGER DEFAULT 3,
+            recurrente INTEGER DEFAULT 1,
+            pagado INTEGER DEFAULT 0
         )
     """)
 
@@ -269,7 +322,8 @@ def mostrar_recordatorios():
         id_t, nombre, dia_cierre, dia_venc, limite = t
         
         dias_cierre, fecha_cierre = dias_hasta_proximo_dia(dia_cierre)
-        dias_venc, fecha_venc = dias_hasta_proximo_dia(dia_vencimiento)
+        # CORREGIDO: antes decía dia_vencimiento (variable inexistente)
+        dias_venc, fecha_venc = dias_hasta_proximo_dia(dia_venc)
         
         print(f"\n💳 {nombre} (ID: {id_t})")
         print(f"   📅 Cierre: {fecha_cierre.strftime('%d/%m/%Y')} — faltan {dias_cierre} días")
@@ -320,6 +374,259 @@ def mostrar_compras_con_saldo():
     print("-"*110)
 
 # ==========================================
+# 4B. SERVICIOS, FECHAS Y ALERTAS
+# ==========================================
+
+SERVICIOS_COMUNES = [
+    "Luz", "Gas", "Agua", "Internet", "Celular", "Cable / TV",
+    "Streaming", "Alquiler", "Expensas", "Impuesto municipal",
+    "Patente", "Seguro",
+]
+
+def pedir_fecha(texto):
+    """Pide una fecha DD/MM/AAAA hasta que sea válida. Devuelve 'AAAA-MM-DD'."""
+    while True:
+        valor = input(texto).strip()
+        try:
+            return datetime.strptime(valor, "%d/%m/%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            print("❌ Formato inválido. Usá DD/MM/AAAA (ej: 25/10/2026).")
+
+def sumar_un_mes(fecha_iso):
+    """Suma un mes a una fecha 'AAAA-MM-DD' respetando el largo de cada mes."""
+    f = datetime.strptime(fecha_iso, "%Y-%m-%d").date()
+    mes = f.month % 12 + 1
+    anio = f.year + (1 if f.month == 12 else 0)
+    dia = min(f.day, calendar.monthrange(anio, mes)[1])
+    return date(anio, mes, dia).strftime("%Y-%m-%d")
+
+def estado_vencimiento(dias):
+    if dias < 0:
+        return f"🚨 Vencido hace {-dias} d"
+    if dias == 0:
+        return "🚨 Vence HOY"
+    if dias <= 3:
+        return f"⚠️ Vence en {dias} d"
+    return f"En {dias} días"
+
+def crear_servicio(nombre, monto, fecha_vencimiento, dias_aviso=3, recurrente=1):
+    conexion = conectar_db()
+    cursor = conexion.cursor()
+    cursor.execute(
+        """INSERT INTO servicios (nombre, monto, fecha_vencimiento, dias_aviso, recurrente)
+           VALUES (?, ?, ?, ?, ?)""",
+        (nombre, monto, fecha_vencimiento, dias_aviso, recurrente)
+    )
+    conexion.commit()
+    conexion.close()
+
+def listar_servicios():
+    conexion = conectar_db()
+    cursor = conexion.cursor()
+    cursor.execute("""
+        SELECT id, nombre, monto, fecha_vencimiento, dias_aviso, recurrente, pagado
+        FROM servicios ORDER BY pagado, fecha_vencimiento
+    """)
+    servicios = cursor.fetchall()
+    conexion.close()
+    return servicios
+
+def eliminar_servicio(id_servicio):
+    conexion = conectar_db()
+    cursor = conexion.cursor()
+    cursor.execute("DELETE FROM servicios WHERE id = ?", (id_servicio,))
+    conexion.commit()
+    conexion.close()
+
+def pagar_servicio(id_servicio):
+    """
+    Marca un servicio como pagado.
+    - Recurrente: el vencimiento pasa al mes siguiente.
+    - No recurrente: queda marcado como pagado.
+    Si tiene monto, además lo registra como gasto (categoría 'Servicios').
+    """
+    conexion = conectar_db()
+    cursor = conexion.cursor()
+    cursor.execute(
+        "SELECT nombre, monto, fecha_vencimiento, recurrente FROM servicios WHERE id = ?",
+        (id_servicio,)
+    )
+    resultado = cursor.fetchone()
+
+    if not resultado:
+        conexion.close()
+        return "❌ No existe un servicio con ese ID."
+
+    nombre, monto, fecha_venc, recurrente = resultado
+
+    if recurrente:
+        nueva_fecha = sumar_un_mes(fecha_venc)
+        cursor.execute(
+            "UPDATE servicios SET fecha_vencimiento = ? WHERE id = ?",
+            (nueva_fecha, id_servicio)
+        )
+        mensaje = (f"✅ '{nombre}' pagado. Próximo vencimiento: "
+                   f"{datetime.strptime(nueva_fecha, '%Y-%m-%d').strftime('%d/%m/%Y')}.")
+    else:
+        cursor.execute("UPDATE servicios SET pagado = 1 WHERE id = ?", (id_servicio,))
+        mensaje = f"✅ '{nombre}' marcado como pagado."
+
+    conexion.commit()
+    conexion.close()
+
+    if monto and monto > 0:
+        registrar_gasto(f"Pago {nombre}", "Servicios", monto)
+
+    return mensaje
+
+def mostrar_servicios():
+    servicios = listar_servicios()
+
+    if not servicios:
+        print("\n⚠️ No hay servicios registrados.")
+        return
+
+    hoy = date.today()
+    print("\n" + "="*75)
+    print("       🏠 SERVICIOS Y VENCIMIENTOS")
+    print("="*75)
+    print(f"{'ID':<4} | {'Servicio':<18} | {'Monto':<11} | {'Vence':<10} | Estado")
+    print("-"*75)
+
+    for id_s, nombre, monto, fecha_iso, aviso, recurrente, pagado in servicios:
+        fecha = datetime.strptime(fecha_iso, "%Y-%m-%d").date()
+        dias = (fecha - hoy).days
+        estado = "✅ Pagado" if pagado else estado_vencimiento(dias)
+        tipo = " 🔁" if recurrente else ""
+        print(f"{id_s:<4} | {nombre:<18} | ${monto:<10.2f} | "
+              f"{fecha.strftime('%d/%m/%Y'):<10} | {estado}{tipo}")
+
+    print("-"*75)
+    print("🔁 = se repite todos los meses")
+
+def obtener_alertas(dias_aviso_tarjeta=3):
+    """
+    Devuelve una lista de alertas ordenadas por urgencia:
+    (tipo, nombre, fecha, dias_restantes)
+    Incluye servicios (según su 'dias_aviso') y cierres/vencimientos de tarjetas.
+    """
+    alertas = []
+    hoy = date.today()
+
+    for id_s, nombre, monto, fecha_iso, aviso, recurrente, pagado in listar_servicios():
+        if pagado:
+            continue
+        fecha = datetime.strptime(fecha_iso, "%Y-%m-%d").date()
+        dias = (fecha - hoy).days
+        if dias <= aviso:
+            alertas.append(("Servicio", nombre, fecha, dias))
+
+    for id_t, nombre, dia_cierre, dia_venc, limite in listar_tarjetas():
+        dias, fecha = dias_hasta_proximo_dia(dia_venc)
+        if dias <= dias_aviso_tarjeta:
+            alertas.append(("Vencimiento tarjeta", nombre, fecha, dias))
+        dias, fecha = dias_hasta_proximo_dia(dia_cierre)
+        if dias <= dias_aviso_tarjeta:
+            alertas.append(("Cierre tarjeta", nombre, fecha, dias))
+
+    alertas.sort(key=lambda a: a[3])
+    return alertas
+
+def mostrar_alertas(mostrar_si_vacio=True):
+    alertas = obtener_alertas()
+
+    if not alertas:
+        if mostrar_si_vacio:
+            print("\n✅ No tenés vencimientos próximos. ¡Todo al día!")
+        return
+
+    print("\n" + "="*60)
+    print("       🔔 PRÓXIMOS VENCIMIENTOS")
+    print("="*60)
+    for tipo, nombre, fecha, dias in alertas:
+        print(f"{estado_vencimiento(dias):<24} | {tipo}: {nombre} ({fecha.strftime('%d/%m/%Y')})")
+    print("="*60)
+
+def elegir_servicio_del_menu():
+    """Muestra el menú de servicios comunes y devuelve el nombre elegido."""
+    print("\n¿Qué servicio querés agregar?")
+    for i, nombre in enumerate(SERVICIOS_COMUNES, start=1):
+        print(f"{i:>2}. {nombre}")
+    otro = len(SERVICIOS_COMUNES) + 1
+    print(f"{otro:>2}. Otro (escribir nombre)")
+
+    try:
+        eleccion = int(input("Elegí una opción: "))
+    except ValueError:
+        return None
+
+    if 1 <= eleccion <= len(SERVICIOS_COMUNES):
+        return SERVICIOS_COMUNES[eleccion - 1]
+    if eleccion == otro:
+        return input("Nombre del servicio: ").strip() or None
+    return None
+
+def mostrar_menu_servicios():
+    print("\n--- SERVICIOS Y VENCIMIENTOS ---")
+    print("1. Agregar servicio")
+    print("2. Ver servicios")
+    print("3. Marcar servicio como pagado")
+    print("4. Eliminar servicio")
+    print("5. Volver al menú principal")
+
+def menu_servicios():
+    while True:
+        mostrar_menu_servicios()
+        opcion = input("Elige una opción (1-5): ")
+
+        if opcion == "1":
+            nombre = elegir_servicio_del_menu()
+            if not nombre:
+                print("❌ Opción inválida.")
+                continue
+            try:
+                monto_str = input("Monto aproximado (Enter para omitir): ")
+                monto = float(monto_str) if monto_str else 0
+                fecha_venc = pedir_fecha("Fecha de vencimiento (DD/MM/AAAA): ")
+                aviso_str = input("¿Cuántos días antes querés el aviso? (Enter = 3): ")
+                aviso = int(aviso_str) if aviso_str else 3
+                rec = input("¿Se repite todos los meses? (s/n, Enter = s): ").lower()
+                recurrente = 0 if rec == "n" else 1
+                crear_servicio(nombre, monto, fecha_venc, aviso, recurrente)
+                print(f"✅ Servicio '{nombre}' agregado.")
+            except ValueError:
+                print("❌ Monto o días inválidos.")
+
+        elif opcion == "2":
+            mostrar_servicios()
+
+        elif opcion == "3":
+            mostrar_servicios()
+            try:
+                id_s = int(input("ID del servicio que pagaste: "))
+                print(pagar_servicio(id_s))
+            except ValueError:
+                print("❌ ID inválido.")
+
+        elif opcion == "4":
+            mostrar_servicios()
+            try:
+                id_s = int(input("ID del servicio a eliminar: "))
+                confirmar = input("¿Confirmás? (s/n): ")
+                if confirmar.lower() == "s":
+                    eliminar_servicio(id_s)
+                    print("🗑️ Servicio eliminado.")
+                else:
+                    print("Cancelado.")
+            except ValueError:
+                print("❌ ID inválido.")
+
+        elif opcion == "5":
+            break
+        else:
+            print("❌ Opción no válida.")
+
+# ==========================================
 # 5. MENÚS
 # ==========================================
 
@@ -329,7 +636,9 @@ def mostrar_menu_principal():
     print("="*40)
     print("1. Gastos generales")
     print("2. Tarjetas de crédito")
-    print("3. Salir")
+    print("3. Servicios (luz, gas, internet...)")
+    print("4. 🔔 Ver próximos vencimientos")
+    print("5. Salir")
     print("="*40)
 
 def mostrar_menu_gastos():
@@ -350,6 +659,32 @@ def mostrar_menu_tarjetas():
     print("6. 🔔 Ver recordatorios y saldos")
     print("7. Eliminar tarjeta")
     print("8. Volver al menú principal")
+
+def elegir_tarjeta_del_menu():
+    """Muestra el menú de tarjetas argentinas y devuelve el nombre elegido."""
+    nombres = list(TARJETAS_ARGENTINA.keys())
+
+    print("\n¿Qué tarjeta querés agregar?")
+    for i, nombre in enumerate(nombres, start=1):
+        print(f"{i:>2}. {nombre}")
+    otra = len(nombres) + 1
+    print(f"{otra:>2}. Otra (escribir nombre)")
+
+    try:
+        eleccion = int(input("Elegí una opción: "))
+    except ValueError:
+        return None
+
+    if 1 <= eleccion <= len(nombres):
+        base = nombres[eleccion - 1]
+    elif eleccion == otra:
+        return input("Nombre de la tarjeta: ").strip() or None
+    else:
+        return None
+
+    # Opcional: banco emisor (útil para Visa/Mastercard/Amex)
+    banco = input(f"Banco emisor de tu {base} (Enter para omitir): ").strip()
+    return f"{base} {banco}" if banco else base
 
 # ==========================================
 # 6. LÓGICA DE LOS MENÚS
@@ -408,14 +743,17 @@ def menu_tarjetas():
         opcion = input("Elige una opción (1-8): ")
 
         if opcion == "1":
-            nombre = input("Nombre de la tarjeta (Ej: Visa Santander): ")
+            nombre = elegir_tarjeta_del_menu()
+            if not nombre:
+                print("❌ Opción inválida.")
+                continue
             try:
                 dia_cierre = int(input("Día de cierre (1-31): "))
                 dia_venc = int(input("Día de vencimiento (1-31): "))
                 limite_str = input("Límite (opcional, Enter para omitir): ")
                 limite = float(limite_str) if limite_str else 0
                 crear_tarjeta(nombre, dia_cierre, dia_venc, limite)
-                print("✅ Tarjeta agregada.")
+                print(f"✅ Tarjeta '{nombre}' agregada.")
             except ValueError:
                 print("❌ Días o límite inválidos.")
 
@@ -493,16 +831,21 @@ def menu_tarjetas():
 
 def main():
     crear_tablas()
+    mostrar_alertas(mostrar_si_vacio=False)  # avisa al abrir si hay algo por vencer
     
     while True:
         mostrar_menu_principal()
-        opcion = input("Elige una opción (1-3): ")
+        opcion = input("Elige una opción (1-5): ")
         
         if opcion == "1":
             menu_gastos()
         elif opcion == "2":
             menu_tarjetas()
         elif opcion == "3":
+            menu_servicios()
+        elif opcion == "4":
+            mostrar_alertas()
+        elif opcion == "5":
             print("\n¡Hasta luego! 👋")
             break
         else:
@@ -510,3 +853,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
