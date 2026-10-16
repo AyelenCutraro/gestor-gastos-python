@@ -1,12 +1,13 @@
 """
 Interfaz web (Streamlit) del gestor de gastos - versión con diseño.
-Reutiliza la lógica de gestor_gastos.py.
+Reutiliza la lógica de main.py (base de datos, cuotas, alertas).
 
 Ejecutar:
     pip install streamlit
     streamlit run app.py
 """
 import html
+import re
 from datetime import date
 
 import pandas as pd
@@ -51,7 +52,11 @@ CSS = """
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
-
+.monto{border-radius:14px;padding:10px 16px;margin:-4px 0 14px 0;
+background:rgba(108,92,231,.14);border:1px solid rgba(108,92,231,.5}
+.monto .n{font-size:1.6rem;font-weight:800;letter-spacing:.02em}
+.monto .t{font-size:.88rem;opacity:.9;font-style:italic}
+                            
 
 def pesos(n):
     """Formato argentino: $1.234.567"""
@@ -85,6 +90,10 @@ def color_estado(dias, pagado=False):
         return "#F39C12"
     return "#0984E3"
 
+#MONTOS: Puntos de miles + texto en letras
+#==========================================
+
+UNIDADES= ["cero", "uno", "dos","tres","cuatro","cinco", "seis","siete"]
 
 # ==========================================
 # CÁLCULOS
