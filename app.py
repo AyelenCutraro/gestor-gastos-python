@@ -100,6 +100,49 @@ UNIDADES= ["cero", "uno", "dos","tres","cuatro","cinco", "seis","siete","ocho", 
 DECENAS= {3:"treinta", 4:"cuarenta",5:"cincuenta",6:"sesenta",7:"setenta",8:"ochenta",9:"noventa"}
 CENTENAS= {1: "ciento",2: "doscientos",3: "trescientos", 4: "cuatrocientos",5: "quinientos",6: "seiscientos",7: "setecientos",8: "ochocientos",9: "novecientos"}
 
+def_menor_mil(n):
+"""Palabras para 1..999"""
+if n ==100:
+    return "cien"
+    partes=[]
+    c,r=divmod(n,100)
+    if c:
+        partes.append(CENTENAS[c])
+    if r:
+        if r<30:
+            partes.append(UNIDADES[r])
+        else:
+            d,u=divmod(r,10)
+partes.append(DECENAS[d]+(f" y {UNIDADES[u]}" if u else ""))
+return"".join(partes)
+def_apocopar(texto):
+"""uno' -> 'un' delante de 'mil'/'millones'."""
+
+if texto.endswith("veintiún":
+    return texto[:-9] + "veintiún"
+if texto.endswith("uno"):
+    return texto[:-3] + "un"
+    return texto
+
+"""Número entero a palabras en español hasta 999.999.999.999"""
+
+if n==0:
+    return "cero"
+if n<1000:
+    return_menor_mil(n)
+if n<1_000_000:
+    miles,resto=divmod(n,1000)
+
+txt= "mil" if miles== 1
+else f"{_apocopar(_menos_mil(miles))}mil"
+return txt + (f"{_menor_mil(resto)}" if resto else "")
+if n<10**12:
+    millones,resto=divmod(n,1_000_000)
+if millones==1
+text= "un millón"
+else
+text=
+    
 
 
 # ==========================================
