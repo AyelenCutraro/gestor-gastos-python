@@ -1,7 +1,6 @@
 """
-Interfaz web (Streamlit) del gestor de gastos - versión con diseño.
+Interfaz web (Streamlit) del gestor de gastos.
 Reutiliza la lógica de main.py (base de datos, cuotas, alertas).
-
 Ejecutar:
     pip install streamlit
     streamlit run app.py
@@ -9,31 +8,27 @@ Ejecutar:
 import html
 import re
 from datetime import date
-
 import pandas as pd
 import streamlit as st
-
-import main as g 
-
+import main as g  # la lógica vive en main.py (misma carpeta)
 st.set_page_config(page_title="Gestor de gastos", page_icon="💸", layout="wide")
 g.crear_tablas()
-
 CATEGORIAS_GASTO = ["Comida", "Transporte", "Hogar", "Salud", "Ocio",
                     "Ropa", "Educación", "Servicios", "Otros"]
 MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
          "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
-
 # ==========================================
 # ESTILO
 # ==========================================
-
 CSS = """
 <style>
 .hero{background:linear-gradient(135deg,#6C5CE7 0%,#00B894 100%);padding:24px 28px;
-      border-radius:20px;color:#fff;margin-bottom:20px;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+      border-radius:20px;color:#fff;margin-bottom:20px;box-shadow:0 6px 18px
+rgba(0,0,0,.18)}
 .hero h1{margin:0;font-size:1.8rem;color:#fff;padding:0}
 .hero p{margin:6px 0 0;opacity:.92}
-.kpi{border-radius:16px;padding:16px 18px;color:#fff;box-shadow:0 4px 14px rgba(0,0,0,.18);
+.kpi{border-radius:16px;padding:16px 18px;color:#fff;box-shadow:0 4px 14px
+rgba(0,0,0,.18);
      margin-bottom:12px}
 .kpi .l{font-size:.78rem;opacity:.92;text-transform:uppercase;letter-spacing:.06em}
 .kpi .v{font-size:1.6rem;font-weight:800;line-height:1.25}
@@ -41,7 +36,8 @@ CSS = """
       background:rgba(128,128,128,.10);border:1px solid rgba(128,128,128,.25)}
 .card h4{margin:0 0 6px 0;padding:0}
 .small{font-size:.85rem;opacity:.85}
-.bar{background:rgba(128,128,128,.28);border-radius:999px;height:12px;overflow:hidden;margin:6px 0}
+.bar{background:rgba(128,128,128,.28);border-
+radius:999px;height:12px;overflow:hidden;margin:6px 0}
 .bar-fill{height:100%;border-radius:999px}
 .pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.78rem;
       font-weight:700;color:#fff}
@@ -49,36 +45,26 @@ CSS = """
 .row .m{width:74px;font-size:.85rem}
 .row .b{flex:1}
 .row .a{width:96px;text-align:right;font-size:.85rem;font-weight:600}
+.monto{border-radius:14px;padding:10px 16px;margin:-4px 0 14px 0;
+       background:rgba(108,92,231,.14);border:1px solid rgba(108,92,231,.5)}
+.monto .n{font-size:1.6rem;font-weight:800;letter-spacing:.02em}
+.monto .t{font-size:.88rem;opacity:.9;font-style:italic}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
-.monto{border-radius:14px;padding:10px 16px;margin:-4px 0 14px 0;
-background:rgba(108,92,231,.14);border:1px solid rgba(108,92,231,.5}
-.monto .n{font-size:1.6rem;font-weight:800;letter-spacing:.02em}
-.monto .t{font-size:.88rem;opacity:.9;font-style:italic}
-                            
-
 def pesos(n):
     """Formato argentino: $1.234.567"""
     return "$" + f"{n:,.0f}".replace(",", ".")
-
-
 def barra(pct, color):
     pct = max(0, min(100, pct))
     return (f'<div class="bar"><div class="bar-fill" '
             f'style="width:{pct:.0f}%;background:{color}"></div></div>')
-
-
 def kpi(etiqueta, valor, color):
     return (f'<div class="kpi" style="background:{color}">'
             f'<div class="l">{etiqueta}</div><div class="v">{valor}</div></div>')
-
-
 def hero(titulo, subtitulo):
     st.markdown(f'<div class="hero"><h1>{titulo}</h1><p>{subtitulo}</p></div>',
                 unsafe_allow_html=True)
-
-
 def color_estado(dias, pagado=False):
     if pagado:
         return "#00B894"
@@ -89,105 +75,186 @@ def color_estado(dias, pagado=False):
     if dias <= 7:
         return "#F39C12"
     return "#0984E3"
-
-#============================================
-#MONTOS: Puntos de miles + texto en letras
-#============================================
-
-UNIDADES= ["cero", "uno", "dos","tres","cuatro","cinco", "seis","siete","ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", 
-           "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco", 
-           "veintiséis", "veintisiete", "veintiocho", "veintinueve"]
-DECENAS= {3:"treinta", 4:"cuarenta",5:"cincuenta",6:"sesenta",7:"setenta",8:"ochenta",9:"noventa"}
-CENTENAS= {1: "ciento",2: "doscientos",3: "trescientos", 4: "cuatrocientos",5: "quinientos",6: "seiscientos",7: "setecientos",8: "ochocientos",9: "novecientos"}
-
-def_menor_mil(n):
-"""Palabras para 1..999"""
-if n ==100:
-    return "cien"
-    partes=[]
-    c,r=divmod(n,100)
+# ==========================================
+# MONTOS: puntos de miles + texto en letras
+# ==========================================
+UNIDADES = ["cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho",
+            "nueve", "diez", "once", "doce", "trece", "catorce", "quince","dieciséis",
+            "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno","veintidós",
+            "veintitrés", "veinticuatro", "veinticinco", "veintiséis", "veintisiete",
+            "veintiocho", "veintinueve"]
+DECENAS = {3: "treinta", 4: "cuarenta", 5: "cincuenta", 6: "sesenta", 7: "setenta", 8: "ochenta", 9: "noventa"}
+CENTENAS = {1: "ciento", 2: "doscientos", 3: "trescientos", 4: "cuatrocientos",
+            5: "quinientos", 6: "seiscientos", 7: "setecientos", 8: "ochocientos",
+            9: "novecientos"}
+def _menor_mil(n):
+    """Palabras para 1..999."""
+    if n == 100:
+        return "cien"
+    partes = []
+    c, r = divmod(n, 100)
     if c:
         partes.append(CENTENAS[c])
     if r:
-        if r<30:
+        if r < 30:
             partes.append(UNIDADES[r])
         else:
-            d,u=divmod(r,10)
-partes.append(DECENAS[d]+(f" y {UNIDADES[u]}" if u else ""))
-return"".join(partes)
-def_apocopar(texto):
-"""uno' -> 'un' delante de 'mil'/'millones'."""
-
-if texto.endswith("veintiún":
-    return texto[:-9] + "veintiún"
-if texto.endswith("uno"):
-    return texto[:-3] + "un"
+            d, u = divmod(r, 10)
+            partes.append(DECENAS[d] + (f" y {UNIDADES[u]}" if u else ""))
+    return " ".join(partes)
+def _apocopar(texto):
+    """'uno' -> 'un' delante de 'mil' / 'millones'."""
+    if texto.endswith("veintiuno"):
+        return texto[:-9] + "veintiún"
+    if texto.endswith("uno"):
+        return texto[:-3] + "un"
     return texto
-
-"""Número entero a palabras en español hasta 999.999.999.999"""
-
-if n==0:
-    return "cero"
-if n<1000:
-    return_menor_mil(n)
-if n<1_000_000:
-    miles,resto=divmod(n,1000)
-
-txt= "mil" if miles== 1
-else f"{_apocopar(_menos_mil(miles))}mil"
-return txt + (f"{_menor_mil(resto)}" if resto else "")
-if n<10**12:
-    millones,resto=divmod(n,1_000_000)
-if millones==1
-text= "un millón"
-else
-text=
-    
-
-
+def numero_a_palabras(n):
+    """Número entero a palabras en español (hasta 999.999.999.999)."""
+    if n == 0:
+        return "cero"
+    if n < 1000:
+        return _menor_mil(n)
+    if n < 1_000_000:
+        miles, resto = divmod(n, 1000)
+        txt = "mil" if miles == 1 else f"{_apocopar(_menor_mil(miles))} mil"
+        return txt + (f" {_menor_mil(resto)}" if resto else "")
+    if n < 10 ** 12:
+        millones, resto = divmod(n, 1_000_000)
+        if millones == 1:
+            txt = "un millón"
+        else:
+            txt = f"{_apocopar(numero_a_palabras(millones))} millones"
+        return txt + (f" {numero_a_palabras(resto)}" if resto else "")
+    return ""
+def parsear_monto(texto):
+    """
+    Interpreta un monto escrito a la argentina o sin formato.
+      '7200000' | '7.200.000' | '7.200.000,50' | '7200000,5' | '$ 7.200.000'
+    Punto = miles, coma = decimales. Devuelve float, o None si no se entiende.
+    """
+    t = texto.strip().replace("$", "").replace(" ", "")
+    if not t or not re.fullmatch(r"[\d.,]+", t):
+        return None
+    ent, dec = t, ""
+    if "." in t and "," in t:
+        # el último símbolo es el separador decimal
+        if t.rfind(",") > t.rfind("."):
+            ent, dec = t.rsplit(",", 1)
+            ent = ent.replace(".", "").replace(",", "")
+        else:
+            ent, dec = t.rsplit(".", 1)
+            ent = ent.replace(",", "").replace(".", "")
+    elif "," in t:
+        partes = t.split(",")
+        if len(partes) == 2 and len(partes[1]) <= 2:
+            ent, dec = partes                    # 7200,50 -> decimal
+        else:
+            ent = "".join(partes)                # 7,200,000 -> miles
+    elif "." in t:
+        partes = t.split(".")
+        if all(len(p) == 3 for p in partes[1:]) and 1 <= len(partes[0]) <= 3:
+            ent = "".join(partes)                # 7.200.000 -> miles
+        elif len(partes) == 2:
+            ent, dec = partes                    # 7200.50 -> decimal
+        else:
+            return None
+    if not ent.isdigit() or (dec and not dec.isdigit()):
+        return None
+    return float(f"{ent}.{dec or '0'}")
+def formato_monto(v):
+    if float(v).is_integer():
+        return pesos(v)
+    s = f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return "$" + s
+def monto_en_letras(v):
+    entero = int(v)
+    centavos = int(round((v - entero) * 100))
+    palabras = numero_a_palabras(entero)
+    if not palabras:
+        return ""
+    texto = f"{palabras} pesos"
+    if centavos:
+        texto += f" con {centavos:02d} centavos"
+    return texto
+def campo_monto(etiqueta, clave):
+    """
+    Campo para escribir un monto. Mientras escribís (al apretar Enter o salir del
+campo)
+    muestra el número con puntos y en letras, para no equivocarte con los ceros.
+    Devuelve float, o None si está vacío o no se entiende.
+    """
+    texto = st.text_input(etiqueta, key=clave, placeholder="Ej: 7200000 o 7.200.000")
+    if not texto.strip():
+        return None
+    valor = parsear_monto(texto)
+    if valor is None:
+        st.error("No entiendo ese monto. Escribí solo números, por ejemplo 7200000.")
+        return None
+    st.markdown(
+        f'<div class="monto"><div class="n">{formato_monto(valor)}</div>'
+        f'<div class="t">{monto_en_letras(valor)}</div></div>',
+        unsafe_allow_html=True,
+    )
+    if valor >= 100_000_000:
+        st.warning("Es un monto muy alto. Revisá que la cantidad de ceros sea
+correcta.")
+    return valor
+# ==========================================
+# FORMULARIOS: limpiar campos y mensajes
+# ==========================================
+def nonce(form):
+    return st.session_state.setdefault(f"nonce_{form}", 0)
+def k(form, campo):
+    """Clave única por formulario; cambia al guardar para dejar los campos en
+blanco."""
+    return f"{form}_{campo}_{nonce(form)}"
+def limpiar(form):
+    st.session_state[f"nonce_{form}"] = nonce(form) + 1
+def avisar(mensaje, tipo="success"):
+    st.session_state["flash"] = (tipo, mensaje)
+def mostrar_flash():
+    if "flash" in st.session_state:
+        tipo, mensaje = st.session_state.pop("flash")
+        getattr(st, tipo)(mensaje)
 # ==========================================
 # CÁLCULOS
 # ==========================================
-
 def proyeccion_cuotas(tarjeta_id=None, meses=6):
     """
     Cuánto vas a pagar de cuotas cada mes (este mes + los siguientes).
-    Si ya pagaste una cuota de una compra este mes, su próxima cuota cuenta desde el mes que viene.
+    Si ya pagaste una cuota de una compra este mes, su próxima cuota cuenta desde el
+mes que viene.
     Devuelve [(etiqueta_mes, monto), ...]
     """
     hoy = date.today()
     mes_actual = hoy.strftime("%Y-%m")
     totales = [0.0] * meses
-
     for c in g.listar_compras_tarjeta(tarjeta_id):
         total, c_tot, c_pag, f_ult = c[3], c[4], c[5], c[7]
         cuota = total / c_tot
         inicio = 1 if (f_ult and f_ult[:7] == mes_actual) else 0
-        for k in range(c_tot - c_pag):
-            if inicio + k < meses:
-                totales[inicio + k] += cuota
-
+        for i in range(c_tot - c_pag):
+            if inicio + i < meses:
+                totales[inicio + i] += cuota
     resultado = []
     for i in range(meses):
         m = (hoy.month - 1 + i) % 12
         a = hoy.year + (hoy.month - 1 + i) // 12
         resultado.append((f"{MESES[m]} {a}", totales[i]))
     return resultado
-
-
 def panel_proyeccion(proy, color="#6C5CE7"):
     """Estilo Mercado Pago: lo que debés el mes que viene y barras por mes."""
     este_mes, proximo = proy[0][1], proy[1][1]
     maximo = max(m for _, m in proy) or 1
-
     st.markdown(
         f'<div class="card"><div class="small">Cuotas de este mes</div>'
         f'<div style="font-size:1.5rem;font-weight:800">{pesos(este_mes)}</div>'
         f'<div class="small" style="margin-top:8px">El mes que viene pagás</div>'
-        f'<div style="font-size:1.9rem;font-weight:800;color:{color}">{pesos(proximo)}</div></div>',
+        f'<div style="font-size:1.9rem;font-weight:800;color:{color}">
+{pesos(proximo)}</div></div>',
         unsafe_allow_html=True,
     )
-
     filas = ""
     for i, (mes, monto) in enumerate(proy):
         c = color if i == 1 else "rgba(128,128,128,.55)"
@@ -197,29 +264,29 @@ def panel_proyeccion(proy, color="#6C5CE7"):
                   f'<div class="b">{barra(monto / maximo * 100, c)}</div>'
                   f'<div class="a">{pesos(monto)}</div></div>')
     st.markdown(f'<div class="card">{filas}</div>', unsafe_allow_html=True)
-
-
 # ==========================================
 # INICIO
 # ==========================================
-
 def pagina_inicio():
-    hero("💸 Gestor de gastos", f"Hoy es {date.today():%d/%m/%Y} · tus finanzas de un vistazo")
-
+    hero("💸 Gestor de gastos", f"Hoy es {date.today():%d/%m/%Y} · tus finanzas de un
+vistazo")
     mes = date.today().strftime("%Y-%m")
     gastos_mes = sum(x[3] for x in g.consultar_gastos() if x[4].startswith(mes))
-    deuda_cuotas = sum(g.calcular_saldo_pendiente(c[0]) for c in g.listar_compras_tarjeta())
+    deuda_cuotas = sum(g.calcular_saldo_pendiente(c[0]) for c in
+g.listar_compras_tarjeta())
     proy = proyeccion_cuotas()
     hoy = date.today()
     serv_30 = sum(s[2] for s in g.listar_servicios()
                   if not s[6] and (date.fromisoformat(s[3]) - hoy).days <= 30)
-
     c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(kpi("Gastos del mes", pesos(gastos_mes), "#6C5CE7"), unsafe_allow_html=True)
-    c2.markdown(kpi("Deuda total en cuotas", pesos(deuda_cuotas), "#E17055"), unsafe_allow_html=True)
-    c3.markdown(kpi("Cuotas mes que viene", pesos(proy[1][1]), "#0984E3"), unsafe_allow_html=True)
-    c4.markdown(kpi("Servicios (30 días)", pesos(serv_30), "#00B894"), unsafe_allow_html=True)
-
+    c1.markdown(kpi("Gastos del mes", pesos(gastos_mes), "#6C5CE7"),
+unsafe_allow_html=True)
+    c2.markdown(kpi("Deuda total en cuotas", pesos(deuda_cuotas), "#E17055"),
+unsafe_allow_html=True)
+    c3.markdown(kpi("Cuotas mes que viene", pesos(proy[1][1]), "#0984E3"),
+unsafe_allow_html=True)
+    c4.markdown(kpi("Servicios (30 días)", pesos(serv_30), "#00B894"),
+unsafe_allow_html=True)
     izq, der = st.columns([1, 1])
     with izq:
         st.subheader("🔔 Próximos vencimientos")
@@ -230,7 +297,8 @@ def pagina_inicio():
             col = color_estado(dias)
             st.markdown(
                 f'<div class="card" style="border-left:6px solid {col}">'
-                f'<span class="pill" style="background:{col}">{g.estado_vencimiento(dias)}</span> '
+                f'<span class="pill" style="background:{col}">
+{g.estado_vencimiento(dias)}</span> '
                 f'<b>{html.escape(nombre)}</b>'
                 f'<div class="small">{tipo} · {fecha:%d/%m/%Y}</div></div>',
                 unsafe_allow_html=True,
@@ -238,115 +306,127 @@ def pagina_inicio():
     with der:
         st.subheader("📅 Lo que viene en cuotas")
         panel_proyeccion(proy)
-
-
 # ==========================================
 # GASTOS
 # ==========================================
-
 def pagina_gastos():
     hero("🧾 Gastos generales", "Registrá y analizá en qué se va tu plata")
-
+    mostrar_flash()
     with st.expander("➕ Registrar gasto", expanded=True):
-        with st.form("form_gasto", clear_on_submit=True):
-            c1, c2, c3 = st.columns([3, 2, 2])
-            desc = c1.text_input("Descripción")
-            cat = c2.selectbox("Categoría", CATEGORIAS_GASTO)
-            monto = c3.number_input("Monto", min_value=0.0, step=100.0)
-            if st.form_submit_button("Guardar gasto"):
-                if not desc.strip() or monto <= 0:
-                    st.error("Completá la descripción y un monto mayor a 0.")
-                else:
-                    g.registrar_gasto(desc.strip(), cat, monto)
-                    st.success("Gasto registrado.")
-
-    with st.expander("🗑️ Eliminar gasto"):
+        c1, c2 = st.columns([3, 2])
+        desc = c1.text_input("Descripción", key=k("gasto", "desc"))
+        cat = c2.selectbox("Categoría", CATEGORIAS_GASTO, key=k("gasto", "cat"))
+        monto = campo_monto("Monto", k("gasto", "monto"))
+        if st.button("Guardar gasto"):
+            if not desc.strip() or not monto:
+                st.error("Completá la descripción y un monto mayor a 0.")
+            else:
+                g.registrar_gasto(desc.strip(), cat, monto)
+                limpiar("gasto")
+                avisar(f"Gasto registrado: {desc.strip()} por
+{formato_monto(monto)}.")
+                st.rerun()
+    with st.expander("🗑 Eliminar gasto"):
         gastos_tmp = g.consultar_gastos()
         if gastos_tmp:
             ids = {x[0]: f"#{x[0]} · {x[1]} · {pesos(x[3])}" for x in gastos_tmp}
             id_sel = st.selectbox("Gasto", list(ids), format_func=lambda i: ids[i])
             if st.button("Eliminar gasto"):
                 g.eliminar_gasto(id_sel)
-                st.success("Gasto eliminado.")
+                avisar("Gasto eliminado.")
+                st.rerun()
         else:
             st.info("No hay gastos para eliminar.")
-
     gastos = g.consultar_gastos()
     if not gastos:
         st.info("Todavía no registraste gastos.")
         return
-
-    df = pd.DataFrame(gastos, columns=["ID", "Descripción", "Categoría", "Monto", "Fecha"])
-    filtro = st.multiselect("Filtrar por categoría", sorted(df["Categoría"].unique()))
+    df = pd.DataFrame(gastos, columns=["ID", "Descripción", "Categoría", "Monto",
+"Fecha"])
+    filtro = st.multiselect("Filtrar por categoría",
+sorted(df["Categoría"].unique()))
     if filtro:
         df = df[df["Categoría"].isin(filtro)]
-
     por_cat = df.groupby("Categoría")["Monto"].sum().sort_values(ascending=False)
     k1, k2, k3 = st.columns(3)
-    k1.markdown(kpi("Total", pesos(df["Monto"].sum()), "#6C5CE7"), unsafe_allow_html=True)
-    k2.markdown(kpi("Categoría principal", por_cat.index[0], "#E17055"), unsafe_allow_html=True)
-    k3.markdown(kpi("Cantidad de gastos", str(len(df)), "#0984E3"), unsafe_allow_html=True)
-
+    k1.markdown(kpi("Total", pesos(df["Monto"].sum()), "#6C5CE7"),
+unsafe_allow_html=True)
+    k2.markdown(kpi("Categoría principal", por_cat.index[0], "#E17055"),
+unsafe_allow_html=True)
+    k3.markdown(kpi("Cantidad de gastos", str(len(df)), "#0984E3"),
+unsafe_allow_html=True)
     col_tabla, col_grafico = st.columns([3, 2])
     with col_tabla:
         st.dataframe(df, hide_index=True)
     with col_grafico:
         st.bar_chart(por_cat, color="#6C5CE7")
-
-
 # ==========================================
 # TARJETAS
 # ==========================================
-
 def pagina_tarjetas():
-    hero("💳 Tarjetas de crédito", "Cuotas, cierres, vencimientos y lo que te queda por pagar")
-
+    hero("💳 Tarjetas de crédito", "Cuotas, cierres, vencimientos y lo que te queda
+por pagar")
+    mostrar_flash()
     with st.expander("➕ Agregar tarjeta"):
-        base = st.selectbox("Tarjeta", list(g.TARJETAS_ARGENTINA.keys()) + ["Otra"])
-        otra = st.text_input("Nombre de la tarjeta") if base == "Otra" else ""
-        with st.form("form_tarjeta", clear_on_submit=True):
-            banco = st.text_input("Banco emisor (opcional)")
-            c1, c2, c3 = st.columns(3)
-            dia_cierre = c1.number_input("Día de cierre", 1, 31, 1)
-            dia_venc = c2.number_input("Día de vencimiento", 1, 31, 10)
-            limite = c3.number_input("Límite (opcional)", min_value=0.0, value=0.0, step=1000.0)
-            if st.form_submit_button("Guardar tarjeta"):
-                nombre_base = otra.strip() if base == "Otra" else base
-                if not nombre_base:
-                    st.error("Escribí el nombre de la tarjeta.")
-                else:
-                    nombre = f"{nombre_base} {banco.strip()}".strip()
-                    g.crear_tarjeta(nombre, int(dia_cierre), int(dia_venc), limite)
-                    st.success(f"Tarjeta '{nombre}' agregada.")
-
+        base = st.selectbox("Tarjeta", list(g.TARJETAS_ARGENTINA.keys()) + ["Otra"],
+                            key=k("tarjeta", "base"))
+        otra = (st.text_input("Nombre de la tarjeta", key=k("tarjeta", "otra"))
+                if base == "Otra" else "")
+        banco = st.text_input("Banco emisor (opcional)", key=k("tarjeta", "banco"))
+        c1, c2 = st.columns(2)
+        dia_cierre = c1.number_input("Día de cierre", 1, 31, 1, key=k("tarjeta",
+"cierre"))
+        dia_venc = c2.number_input("Día de vencimiento", 1, 31, 10, key=k("tarjeta",
+"venc"))
+        limite = campo_monto("Límite de la tarjeta (opcional)", k("tarjeta",
+"limite"))
+        if st.button("Guardar tarjeta"):
+            nombre_base = otra.strip() if base == "Otra" else base
+            if not nombre_base:
+                st.error("Escribí el nombre de la tarjeta.")
+            else:
+                nombre = f"{nombre_base} {banco.strip()}".strip()
+                g.crear_tarjeta(nombre, int(dia_cierre), int(dia_venc), limite or 0)
+                limpiar("tarjeta")
+                avisar(f"Tarjeta '{nombre}' agregada.")
+                st.rerun()
     tarjetas = g.listar_tarjetas()
     nombres = {t[0]: t[1] for t in tarjetas}
-
-    with st.expander("🛍️ Registrar compra con tarjeta"):
+    with st.expander("🛍 Registrar compra con tarjeta"):
         if not tarjetas:
             st.info("Primero agregá una tarjeta.")
         else:
-            with st.form("form_compra", clear_on_submit=True):
-                id_t = st.selectbox("Tarjeta", list(nombres), format_func=lambda i: nombres[i])
-                desc = st.text_input("Descripción de la compra")
-                c1, c2 = st.columns(2)
-                monto = c1.number_input("Monto total", min_value=0.0, step=1000.0)
-                cuotas = c2.number_input("Cuotas (1 = pago único)", 1, 60, 1)
-                if st.form_submit_button("Registrar compra"):
-                    if not desc.strip() or monto <= 0:
-                        st.error("Completá la descripción y un monto mayor a 0.")
-                    else:
-                        g.registrar_compra_tarjeta(id_t, desc.strip(), monto, int(cuotas))
-                        st.success(f"Compra registrada: {int(cuotas)} cuota(s) de {pesos(monto / cuotas)}.")
-
+            id_t = st.selectbox("Tarjeta", list(nombres), format_func=lambda i:
+nombres[i],
+                                key=k("compra", "tarjeta"))
+            desc = st.text_input("Descripción de la compra", key=k("compra", "desc"))
+            monto = campo_monto("Monto total de la compra", k("compra", "monto"))
+            cuotas = st.number_input("Cuotas (1 = pago único)", 1, 60, 1,
+key=k("compra", "cuotas"))
+            if monto:
+                st.caption(f"👉 {int(cuotas)} cuota(s) de {formato_monto(monto /
+cuotas)}")
+            if st.button("Registrar compra"):
+                if not desc.strip() or not monto:
+                    st.error("Completá la descripción y un monto mayor a 0.")
+                else:
+                    g.registrar_compra_tarjeta(id_t, desc.strip(), monto,
+int(cuotas))
+                    limpiar("compra")
+                    avisar(f"Compra registrada: {desc.strip()} en {int(cuotas)}
+cuota(s) "
+                           f"de {formato_monto(monto / cuotas)}.")
+                    st.rerun()
     with st.expander("✅ Pagar una cuota"):
         pendientes = [c for c in g.listar_compras_tarjeta() if c[5] < c[4]]
         if not pendientes:
             st.info("No hay cuotas pendientes.")
         else:
             opciones = {c[0]: f"{c[1]} · {c[2]} ({c[5]}/{c[4]})" for c in pendientes}
-            id_c = st.selectbox("Compra", list(opciones), format_func=lambda i: opciones[i])
-            forzar = st.checkbox("Pagar otra cuota aunque ya haya pagado una este mes")
+            id_c = st.selectbox("Compra", list(opciones), format_func=lambda i:
+opciones[i])
+            forzar = st.checkbox("Pagar otra cuota aunque ya haya pagado una este
+mes")
             if st.button("Registrar pago de cuota"):
                 msg = g.pagar_cuota(id_c, forzar=forzar)
                 if msg.startswith("✅"):
@@ -354,24 +434,23 @@ def pagina_tarjetas():
                     st.balloons()
                 else:
                     st.warning(msg)
-
-    with st.expander("🗑️ Eliminar tarjeta"):
+    with st.expander("🗑 Eliminar tarjeta"):
         if tarjetas:
             id_del = st.selectbox("Tarjeta a eliminar", list(nombres),
-                                  format_func=lambda i: nombres[i], key="del_tarjeta")
+                                  format_func=lambda i: nombres[i],
+key="del_tarjeta")
             ok = st.checkbox("Entiendo que también se borran sus compras")
             if st.button("Eliminar tarjeta") and ok:
                 g.eliminar_tarjeta(id_del)
-                st.success("Tarjeta eliminada.")
+                avisar("Tarjeta eliminada.")
+                st.rerun()
         else:
             st.info("No hay tarjetas.")
-
     # --- Vista (se lee después de las acciones, así siempre está actualizada) ---
     tarjetas = g.listar_tarjetas()
     if not tarjetas:
         st.info("Todavía no agregaste tarjetas.")
         return
-
     cols = st.columns(min(len(tarjetas), 3))
     for i, (id_t, nombre, dia_cierre, dia_venc, limite) in enumerate(tarjetas):
         estilo = g.obtener_estilo_tarjeta(nombre)
@@ -379,22 +458,23 @@ def pagina_tarjetas():
         d_venc, f_venc = g.dias_hasta_proximo_dia(dia_venc)
         compras_t = g.listar_compras_tarjeta(id_t)
         saldo = sum(g.calcular_saldo_pendiente(c[0]) for c in compras_t)
-
         uso = ""
         if limite and limite > 0:
             pct = saldo / limite * 100
             uso = (f'<div style="margin-top:8px;font-size:.85rem">Límite usado: '
                    f'{pesos(saldo)} de {pesos(limite)} ({pct:.0f}%)</div>'
                    f'<div class="bar" style="background:rgba(255,255,255,.3)">'
-                   f'<div class="bar-fill" style="width:{min(pct, 100):.0f}%;background:#fff"></div></div>')
-
+                   f'<div class="bar-fill" style="width:{min(pct,
+100):.0f}%;background:#fff"></div></div>')
         with cols[i % len(cols)]:
             st.markdown(
                 f"""
-                <div style="background:linear-gradient(135deg,{estilo['color']},{estilo['color']}bb);
-                            padding:18px;border-radius:18px;color:white;margin-bottom:14px;
+                <div style="background:linear-gradient(135deg,{estilo['color']},
+{estilo['color']}bb);
+                            padding:18px;border-radius:18px;color:white;marginbottom:14px;
                             box-shadow:0 6px 16px rgba(0,0,0,.22);line-height:1.55">
-                  <div style="font-size:1.2rem;font-weight:800">💳 {html.escape(nombre)}</div>
+                  <div style="font-size:1.2rem;font-weight:800">💳
+{html.escape(nombre)}</div>
                   <div>📅 Cierre: {f_cierre:%d/%m/%Y} (en {d_cierre} d)</div>
                   <div>💰 Vence: {f_venc:%d/%m/%Y} (en {d_venc} d)</div>
                   <div style="margin-top:6px;font-size:1.25rem;font-weight:800">
@@ -404,18 +484,18 @@ def pagina_tarjetas():
                 """,
                 unsafe_allow_html=True,
             )
-
     # --- Proyección mensual ---
     st.subheader("📅 Lo que vas a pagar en los próximos meses")
     opciones_proy = {0: "Todas las tarjetas", **nombres}
-    sel = st.selectbox("Ver", list(opciones_proy), format_func=lambda i: opciones_proy[i])
-    color = "#6C5CE7" if sel == 0 else g.obtener_estilo_tarjeta(nombres[sel])["color"]
+    sel = st.selectbox("Ver", list(opciones_proy), format_func=lambda i:
+opciones_proy[i])
+    color = "#6C5CE7" if sel == 0 else g.obtener_estilo_tarjeta(nombres[sel])
+["color"]
     panel_proyeccion(proyeccion_cuotas(sel or None, meses=8), color)
-
     # --- Compras con barras que van bajando ---
     compras = g.listar_compras_tarjeta()
     if compras:
-        st.subheader("🛍️ Tus compras en cuotas")
+        st.subheader("🛍 Tus compras en cuotas")
         for c_id, tarj, desc, total, c_tot, c_pag, f_compra, f_ult in compras:
             cuota = total / c_tot
             pagado = cuota * c_pag
@@ -423,67 +503,74 @@ def pagina_tarjetas():
             pct_pend = pendiente / total * 100 if total else 0
             completa = c_pag >= c_tot
             col = "#00B894" if completa else ("#F39C12" if pct_pend < 50 else
-                                              g.obtener_estilo_tarjeta(tarj)["color"])
+                                              g.obtener_estilo_tarjeta(tarj)
+["color"])
             etiqueta = "✅ Terminada" if completa else f"Cuota {c_pag}/{c_tot}"
             st.markdown(
-                f'<div class="card"><div style="display:flex;justify-content:space-between">'
-                f'<b>{html.escape(desc)}</b><span class="pill" style="background:{col}">{etiqueta}</span></div>'
-                f'<div class="small">{html.escape(tarj)} · cuota de {pesos(cuota)}</div>'
+                f'<div class="card"><div style="display:flex;justify-content:spacebetween">'
+                f'<b>{html.escape(desc)}</b><span class="pill" style="background:
+{col}">{etiqueta}</span></div>'
+                f'<div class="small">{html.escape(tarj)} · cuota de {pesos(cuota)}
+</div>'
                 f'{barra(pct_pend, col)}'
                 f'<div class="small">Pagaste {pesos(pagado)} · '
                 f'<b>Quedan {pesos(pendiente)}</b> de {pesos(total)}</div></div>',
                 unsafe_allow_html=True,
             )
-
-
 # ==========================================
 # SERVICIOS
 # ==========================================
-
 def pagina_servicios():
     hero("🔌 Servicios y vencimientos", "Que no se te pase ninguna fecha")
-
+    mostrar_flash()
     with st.expander("➕ Agregar servicio"):
-        base = st.selectbox("Servicio", g.SERVICIOS_COMUNES + ["Otro"])
-        otro = st.text_input("Nombre del servicio") if base == "Otro" else ""
-        with st.form("form_servicio", clear_on_submit=True):
-            c1, c2 = st.columns(2)
-            monto = c1.number_input("Monto aproximado (opcional)", min_value=0.0, step=1000.0)
-            fecha = c2.date_input("Fecha de vencimiento", value=date.today(), format="DD/MM/YYYY")
-            c3, c4 = st.columns(2)
-            aviso = c3.number_input("Avisar con cuántos días de anticipación", 0, 60, 3)
-            recurrente = c4.checkbox("Se repite todos los meses", value=True)
-            if st.form_submit_button("Guardar servicio"):
-                nombre = otro.strip() if base == "Otro" else base
-                if not nombre:
-                    st.error("Escribí el nombre del servicio.")
-                else:
-                    g.crear_servicio(nombre, monto, fecha.strftime("%Y-%m-%d"),
-                                     int(aviso), 1 if recurrente else 0)
-                    st.success(f"Servicio '{nombre}' agregado.")
-
-    with st.expander("✅ Marcar como pagado / 🗑️ Eliminar"):
+        base = st.selectbox("Servicio", g.SERVICIOS_COMUNES + ["Otro"], key=k("serv",
+"base"))
+        otro = (st.text_input("Nombre del servicio", key=k("serv", "otro"))
+                if base == "Otro" else "")
+        monto = campo_monto("Monto aproximado (opcional)", k("serv", "monto"))
+        c1, c2 = st.columns(2)
+        fecha = c1.date_input("Fecha de vencimiento", value=date.today(),
+                              format="DD/MM/YYYY", key=k("serv", "fecha"))
+        aviso = c2.number_input("Avisar con cuántos días de anticipación", 0, 60, 3,
+                                key=k("serv", "aviso"))
+        recurrente = st.checkbox("Se repite todos los meses", value=True,
+key=k("serv", "rec"))
+        if st.button("Guardar servicio"):
+            nombre = otro.strip() if base == "Otro" else base
+            if not nombre:
+                st.error("Escribí el nombre del servicio.")
+            else:
+                g.crear_servicio(nombre, monto or 0, fecha.strftime("%Y-%m-%d"),
+                                 int(aviso), 1 if recurrente else 0)
+                limpiar("serv")
+                avisar(f"Servicio '{nombre}' agregado.")
+                st.rerun()
+    with st.expander("✅ Marcar como pagado / 🗑 Eliminar"):
         activos = g.listar_servicios()
         if not activos:
             st.info("No hay servicios.")
         else:
-            opciones = {s[0]: f"{s[1]} · vence {date.fromisoformat(s[3]):%d/%m/%Y}" for s in activos}
-            id_s = st.selectbox("Servicio", list(opciones), format_func=lambda i: opciones[i])
+            opciones = {s[0]: f"{s[1]} · vence {date.fromisoformat(s[3]):%d/%m/%Y}"
+for s in activos}
+            id_s = st.selectbox("Servicio", list(opciones), format_func=lambda i:
+opciones[i])
             c1, c2 = st.columns(2)
             if c1.button("Marcar como pagado"):
-                st.success(g.pagar_servicio(id_s))
+                avisar(g.pagar_servicio(id_s))
+                st.rerun()
             if c2.button("Eliminar servicio"):
                 g.eliminar_servicio(id_s)
-                st.success("Servicio eliminado.")
-
+                avisar("Servicio eliminado.")
+                st.rerun()
     servicios = g.listar_servicios()
     if not servicios:
         st.info("Todavía no agregaste servicios.")
         return
-
     hoy = date.today()
     cols = st.columns(3)
-    for i, (id_s, nombre, monto, fecha_iso, aviso, recurrente, pagado) in enumerate(servicios):
+    for i, (id_s, nombre, monto, fecha_iso, aviso, recurrente, pagado) in
+enumerate(servicios):
         f = date.fromisoformat(fecha_iso)
         dias = (f - hoy).days
         col = color_estado(dias, pagado)
@@ -496,26 +583,21 @@ def pagina_servicios():
                 f'<div class="card" style="border-left:6px solid {col}">'
                 f'<h4>{html.escape(nombre)}</h4>'
                 f'<span class="pill" style="background:{col}">{estado}</span>'
-                f'<div style="font-size:1.3rem;font-weight:800;margin-top:6px">{monto_txt}</div>'
+                f'<div style="font-size:1.3rem;font-weight:800;margin-top:6px">
+{monto_txt}</div>'
                 f'{barra(cercania, col)}'
                 f'<div class="small">Vence {f:%d/%m/%Y}{repite}</div></div>',
                 unsafe_allow_html=True,
             )
-
-
 # ==========================================
 # NAVEGACIÓN
 # ==========================================
-
 PAGINAS = {
     "🏠 Inicio": pagina_inicio,
     "🧾 Gastos": pagina_gastos,
     "💳 Tarjetas": pagina_tarjetas,
     "🔌 Servicios": pagina_servicios,
 }
-
 st.sidebar.title("💸 Menú")
 seleccion = st.sidebar.radio("Ir a", list(PAGINAS), label_visibility="collapsed")
 PAGINAS[seleccion]()
-
-
