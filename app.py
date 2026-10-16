@@ -90,10 +90,17 @@ def color_estado(dias, pagado=False):
         return "#F39C12"
     return "#0984E3"
 
+#============================================
 #MONTOS: Puntos de miles + texto en letras
-#==========================================
+#============================================
 
-UNIDADES= ["cero", "uno", "dos","tres","cuatro","cinco", "seis","siete"]
+UNIDADES= ["cero", "uno", "dos","tres","cuatro","cinco", "seis","siete","ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince", 
+           "dieciséis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidós", "veintitrés", "veinticuatro", "veinticinco", 
+           "veintiséis", "veintisiete", "veintiocho", "veintinueve"]
+DECENAS= {3:"treinta", 4:"cuarenta",5:"cincuenta",6:"sesenta",7:"setenta",8:"ochenta",9:"noventa"}
+CENTENAS= {1: "ciento",2: "doscientos",3: "trescientos", 4: "cuatrocientos",5: "quinientos",6: "seiscientos",7: "setecientos",8: "ochocientos",9: "novecientos"}
+
+
 
 # ==========================================
 # CÁLCULOS
